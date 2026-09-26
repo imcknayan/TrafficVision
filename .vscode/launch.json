@@ -1,0 +1,47 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "1. Auth Service (8001)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--port", "8001", "--reload", "--app-dir", "services/auth"],
+      "env": {
+        "DATABASE_URL": "sqlite:///./trafficvision.db",
+        "JWT_SECRET": "development-only-change-me"
+      }
+    },
+    {
+      "name": "2. Route Analysis Service (8004)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--port", "8004", "--reload", "--app-dir", "services/route-analysis"],
+      "env": {
+        "OSRM_BASE_URL": "https://router.project-osrm.org"
+      }
+    },
+    {
+      "name": "3. API Gateway (8000)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--port", "8000", "--reload", "--app-dir", "services/gateway"],
+      "env": {
+        "AUTH_SERVICE_URL": "http://127.0.0.1:8001",
+        "ROUTE_ANALYSIS_SERVICE_URL": "http://127.0.0.1:8004"
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Run All Backend Services (8000, 8001, 8004)",
+      "configurations": [
+        "1. Auth Service (8001)",
+        "2. Route Analysis Service (8004)",
+        "3. API Gateway (8000)"
+      ]
+    }
+  ]
+}
