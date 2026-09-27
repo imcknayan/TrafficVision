@@ -52,12 +52,20 @@ OpenStreetMap road data.
 
 ### Validation
 
-The following APIs were tested successfully through the API Gateway:
+### Validation
+
+The following Route Analysis APIs were tested successfully locally:
 
 - Route optimization: PASS
 - Alternate route: PASS
 - Travel-time estimation: PASS
 - Road-condition endpoint: PASS
+
+Automated tests:
+
+- 3/3 tests passed
+- Test execution time: 1.51 seconds
+- 19 deprecation warnings reported
 
 Example successful route:
 
