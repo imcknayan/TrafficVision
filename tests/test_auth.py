@@ -7,10 +7,17 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 os.environ["DATABASE_URL"] = f"sqlite:///{ROOT / 'test.db'}"
 os.environ["JWT_SECRET"] = "test-secret"
-sys.path.insert(0, str(ROOT / "services" / "auth"))
-
+import importlib.util
 from fastapi.testclient import TestClient
-from app.main import Base, engine, app
+
+spec = importlib.util.spec_from_file_location("auth_main", ROOT / "services" / "auth" / "app" / "main.py")
+auth_mod = importlib.util.module_from_spec(spec)
+sys.modules["auth_main"] = auth_mod
+spec.loader.exec_module(auth_mod)
+
+Base = auth_mod.Base
+engine = auth_mod.engine
+app = auth_mod.app
 
 Base.metadata.drop_all(engine)
 Base.metadata.create_all(engine)

@@ -1,0 +1,229 @@
+version: '3.8'
+
+networks:
+  trafficvision-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: trafficvision-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-trafficvision}
+      POSTGRES_USER: ${POSTGRES_USER:-trafficvision}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trafficvision}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trafficvision -d trafficvision"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - trafficvision-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: trafficvision-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - trafficvision-network
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth/Dockerfile
+    container_name: trafficvision-auth-service
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-trafficvision}:${POSTGRES_PASSWORD:-trafficvision}@postgres:5432/${POSTGRES_DB:-trafficvision}
+      JWT_SECRET: ${JWT_SECRET:-trafficvision-production-super-secret-key-m4}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - trafficvision-network
+
+  traffic-monitoring:
+    build:
+      context: .
+      dockerfile: services/traffic-monitoring/Dockerfile
+    container_name: trafficvision-traffic-monitoring
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-trafficvision}:${POSTGRES_PASSWORD:-trafficvision}@postgres:5432/${POSTGRES_DB:-trafficvision}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - trafficvision-network
+
+  ai-engine:
+    build:
+      context: .
+      dockerfile: services/ai-engine/Dockerfile
+    container_name: trafficvision-ai-engine
+    restart: unless-stopped
+    environment:
+      TRAFFIC_SERVICE_URL: http://traffic-monitoring:8002
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-trafficvision}:${POSTGRES_PASSWORD:-trafficvision}@postgres:5432/${POSTGRES_DB:-trafficvision}
+    depends_on:
+      traffic-monitoring:
+        condition: service_healthy
+    ports:
+      - "8003:8003"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - trafficvision-network
+
+  route-analysis:
+    build:
+      context: .
+      dockerfile: services/route-analysis/Dockerfile
+    container_name: trafficvision-route-analysis
+    restart: unless-stopped
+    environment:
+      OSRM_BASE_URL: ${OSRM_BASE_URL:-https://router.project-osrm.org}
+      TRAFFIC_SERVICE_URL: http://traffic-monitoring:8002
+      PREDICTION_SERVICE_URL: http://ai-engine:8003
+    depends_on:
+      traffic-monitoring:
+        condition: service_healthy
+      ai-engine:
+        condition: service_healthy
+    ports:
+      - "8004:8004"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - trafficvision-network
+
+  alert-service:
+    build:
+      context: .
+      dockerfile: services/alerts/Dockerfile
+    container_name: trafficvision-alert-service
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-trafficvision}:${POSTGRES_PASSWORD:-trafficvision}@postgres:5432/${POSTGRES_DB:-trafficvision}
+      JWT_SECRET: ${JWT_SECRET:-trafficvision-production-super-secret-key-m4}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8005:8005"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8005/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - trafficvision-network
+
+  analytics-service:
+    build:
+      context: .
+      dockerfile: services/analytics/Dockerfile
+    container_name: trafficvision-analytics-service
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-trafficvision}:${POSTGRES_PASSWORD:-trafficvision}@postgres:5432/${POSTGRES_DB:-trafficvision}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8006:8006"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8006/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - trafficvision-network
+
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    container_name: trafficvision-gateway
+    restart: unless-stopped
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8001
+      TRAFFIC_SERVICE_URL: http://traffic-monitoring:8002
+      PREDICTION_SERVICE_URL: http://ai-engine:8003
+      ROUTE_ANALYSIS_SERVICE_URL: http://route-analysis:8004
+      ALERT_SERVICE_URL: http://alert-service:8005
+      ANALYTICS_SERVICE_URL: http://analytics-service:8006
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      traffic-monitoring:
+        condition: service_healthy
+      ai-engine:
+        condition: service_healthy
+      route-analysis:
+        condition: service_healthy
+      alert-service:
+        condition: service_healthy
+      analytics-service:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - trafficvision-network

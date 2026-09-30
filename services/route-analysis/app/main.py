@@ -12,8 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 OSRM_BASE_URL = os.getenv("OSRM_BASE_URL", "https://router.project-osrm.org")
-PREDICTION_SERVICE_URL = os.getenv("PREDICTION_SERVICE_URL", "http://ai-engine:8003")
-TRAFFIC_SERVICE_URL = os.getenv("TRAFFIC_SERVICE_URL", "http://traffic-monitoring:8002")
+PREDICTION_SERVICE_URL = os.getenv("PREDICTION_SERVICE_URL", "http://127.0.0.1:8003")
+TRAFFIC_SERVICE_URL = os.getenv("TRAFFIC_SERVICE_URL", "http://127.0.0.1:8002")
 ROUTE_CACHE_FILE = Path(__file__).resolve().parent / "route_cache.json"
 
 
@@ -137,9 +137,36 @@ async def resolve_routes(origin: Coordinate, destination: Coordinate, alternativ
     save_route_cache()
     return [payload]
 
-async def predicted_congestion_score(route: dict) -> float:
-    # M2 integration point: until Intern 3 provides road-segment prediction mapping,
-    # distance is the safe fallback; score becomes prediction-driven once configured.
+async def predicted_congestion_score(route: dict, roads: list[str] = None) -> float:
+    score_weights = {"Low": 0.08, "Medium": 0.35, "High": 0.70, "Severe": 0.95}
+    target_roads = roads or route.get("roads") or []
+
+    if target_roads:
+        scores = []
+        for r_id in target_roads:
+            try:
+                async with httpx.AsyncClient(timeout=1.5) as client:
+                    resp = await client.get(f"{PREDICTION_SERVICE_URL}/api/v1/predict/congestion", params={"road_id": r_id})
+                    if resp.status_code == 200:
+                        level = resp.json().get("predicted_level", "Low")
+                        scores.append(score_weights.get(level, 0.15))
+            except Exception:
+                pass
+        if scores:
+            return round(float(sum(scores) / len(scores)), 2)
+
+    try:
+        async with httpx.AsyncClient(timeout=1.0) as client:
+            resp = await client.get(f"{PREDICTION_SERVICE_URL}/api/v1/predict/congestion", params={"road_id": "R001"})
+            if resp.status_code == 200:
+                level = resp.json().get("predicted_level", "Low")
+                base_pred_score = score_weights.get(level, 0.08)
+                dist_factor = min(0.2, (route.get("distance_km", 5.0) / 100))
+                return round(base_pred_score + dist_factor, 2)
+    except Exception:
+        pass
+
+    # Deterministic fallback corridor distance score
     return round(min(1.0, route["distance_km"] / 100), 2)
 
 
@@ -263,8 +290,7 @@ class RouteRankRequest(BaseModel):
 async def rank_routes(payload: RouteRankRequest):
     ranked = []
     for item in payload.routes:
-        # Distance-based heuristic fallback congestion score (temporary fallback until AI/ML prediction engine is integrated)
-        congestion = round(min(1.0, item.distance_km / 100), 2)
+        congestion = await predicted_congestion_score({"distance_km": item.distance_km, "roads": item.roads}, roads=item.roads)
         base_dur = item.base_duration_minutes if item.base_duration_minutes is not None else round(item.distance_km * 1.5, 1)
         est_dur = round(base_dur * (1 + congestion), 1)
         ranked.append({

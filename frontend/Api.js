@@ -391,14 +391,21 @@ const trafficAPI = {
   async getLiveTraffic() {
     try {
       const response = await apiFetch("/traffic/live");
-      if (Array.isArray(response) && response.length > 0) {
-        return response;
+
+      if (response && Array.isArray(response.data)) {
+        return response.data.map((road) => ({
+          ...road,
+          speed: `${road.average_speed} km/h`,
+          avg_speed_kmph: road.average_speed,
+        }));
       }
+
       return FALLBACK_ROADS;
     } catch {
       return FALLBACK_ROADS;
     }
   },
+  
 
   async getDensitySummary() {
     try {
@@ -940,6 +947,72 @@ const operatorAPI = {
   },
 };
 
+// ── Alerts API Client (M3) ──────────────────────────────────────────────────
+const alertAPI = {
+  async getMyAlerts(role = null) {
+    try {
+      const query = buildQueryString({ role: role || AuthManager.getRole() });
+      const res = await apiFetch(`/alerts/my${query ? `?${query}` : ""}`);
+      if (Array.isArray(res)) return res;
+    } catch {}
+    return [];
+  },
+
+  async getActiveAlerts(road_id = null) {
+    try {
+      const query = buildQueryString({ road_id });
+      const res = await apiFetch(`/alerts/active${query ? `?${query}` : ""}`);
+      if (Array.isArray(res)) return res;
+    } catch {}
+    return [];
+  },
+
+  async markAsRead(alertId) {
+    if (!alertId) throw createApiError("alertId is required", 400);
+    return await apiFetch(`/alerts/${encodeURIComponent(String(alertId))}/read`, {
+      method: "POST",
+    });
+  },
+
+  async createAlert({ type, severity, road_id, message }) {
+    return await apiFetch("/alerts", {
+      method: "POST",
+      body: JSON.stringify({ type, severity, road_id, message }),
+    });
+  },
+};
+
+// ── Analytics API Client (M3) ────────────────────────────────────────────────
+const analyticsAPI = {
+  async getTrends(roadId = "R001", range = "day") {
+    const query = buildQueryString({ road_id: roadId, range });
+    return await apiFetch(`/analytics/trends?${query}`);
+  },
+
+  async getHeatmap(range = "day") {
+    const query = buildQueryString({ range });
+    return await apiFetch(`/analytics/heatmap?${query}`);
+  },
+
+  async getReports(range = "week", format = "csv") {
+    const query = buildQueryString({ range, format });
+    return await apiFetch(`/analytics/reports?${query}`);
+  },
+};
+
+// ── AI Insights API Client (M3) ──────────────────────────────────────────────
+const aiInsightsAPI = {
+  async getAnomalies(roadId = null, threshold = 0.35) {
+    const query = buildQueryString({ road_id: roadId, threshold });
+    return await apiFetch(`/ai/anomalies${query ? `?${query}` : ""}`);
+  },
+
+  async getRecommendations(roadId = "R006") {
+    const query = buildQueryString({ road_id: roadId });
+    return await apiFetch(`/ai/recommendations?${query}`);
+  },
+};
+
 // ── Global & Module Scope Exports ─────────────────────────────────────────────
 if (typeof window !== "undefined") {
   window.API_CONFIG = API_CONFIG;
@@ -951,6 +1024,9 @@ if (typeof window !== "undefined") {
   window.predictionAPI = predictionAPI;
   window.routeAPI = routeAPI;
   window.operatorAPI = operatorAPI;
+  window.alertAPI = alertAPI;
+  window.analyticsAPI = analyticsAPI;
+  window.aiInsightsAPI = aiInsightsAPI;
   window.ROAD_NETWORK_GEOMETRY = ROAD_NETWORK_GEOMETRY;
   window.NETWORK_HUBS = NETWORK_HUBS;
   window.getCongestionBadgeClass = getCongestionBadgeClass;
@@ -970,6 +1046,9 @@ if (typeof module !== "undefined" && module.exports) {
     predictionAPI,
     routeAPI,
     operatorAPI,
+    alertAPI,
+    analyticsAPI,
+    aiInsightsAPI,
     ROAD_NETWORK_GEOMETRY,
     NETWORK_HUBS,
     getCongestionBadgeClass,
@@ -978,3 +1057,4 @@ if (typeof module !== "undefined" && module.exports) {
     apiFetch,
   };
 }
+

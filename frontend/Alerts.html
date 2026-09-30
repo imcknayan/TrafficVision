@@ -328,6 +328,34 @@ let activeAlertFilter = 'all';
 
 async function loadAlerts() {
     try {
+        // 1. Fetch from real M3 backend Alert Service
+        let backendAlerts = [];
+        try {
+            backendAlerts = await alertAPI.getMyAlerts();
+        } catch {}
+
+        if (Array.isArray(backendAlerts) && backendAlerts.length > 0) {
+            alertsData = backendAlerts.map(a => {
+                const sev = (a.severity || 'info').toLowerCase();
+                return {
+                    id: a.alert_id,
+                    type: a.type || 'alert',
+                    severity: sev === 'critical' ? 'critical' : (sev === 'high' ? 'severe' : 'warning'),
+                    title: `${(a.type || 'Alert').toUpperCase()}: ${a.message.split(':')[0] || a.road_id}`,
+                    location: `Corridor ${a.road_id || 'Active Node'}`,
+                    time: a.created_at ? new Date(a.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Live',
+                    impact: sev === 'critical' ? '-60% FLOW' : '-25% FLOW',
+                    road_id: a.road_id,
+                    notes: a.message,
+                };
+            });
+            document.getElementById('count-all').textContent = alertsData.length;
+            document.getElementById('count-severe').textContent = alertsData.filter(a => a.severity === 'severe' || a.severity === 'critical').length;
+            filterAlertList();
+            selectAlert(alertsData[0]);
+            return;
+        }
+
         const [roads, density] = await Promise.all([
             trafficAPI.getLiveTraffic(),
             trafficAPI.getDensitySummary()
@@ -335,6 +363,7 @@ async function loadAlerts() {
 
         // Generate alert feed correlated to Day 6 backend road congestion
         alertsData = [];
+
 
         // Add alerts for Severe or High roads
         roads.forEach((road, idx) => {

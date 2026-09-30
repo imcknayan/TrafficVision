@@ -21,25 +21,68 @@ services:
       JWT_SECRET: ${JWT_SECRET:-development-only-change-me}
     depends_on: [postgres]
     ports: ["8001:8001"]
+  traffic-monitoring:
+    build:
+      context: .
+      dockerfile: services/traffic-monitoring/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://trafficvision:trafficvision@postgres:5432/trafficvision
+      REDIS_URL: redis://redis:6379/0
+    depends_on: [postgres]
+    ports: ["8002:8002"]
+
+  ai-engine:
+    build:
+      context: .
+      dockerfile: services/ai-engine/Dockerfile
+    environment:
+      TRAFFIC_SERVICE_URL: http://traffic-monitoring:8002
+      DATABASE_URL: postgresql+psycopg://trafficvision:trafficvision@postgres:5432/trafficvision
+    depends_on: [traffic-monitoring]
+    ports: ["8003:8003"]
+
   gateway:
     build:
       context: .
       dockerfile: services/gateway/Dockerfile
     environment:
       AUTH_SERVICE_URL: http://auth-service:8001
-      TRAFFIC_SERVICE_URL: ${TRAFFIC_SERVICE_URL:-http://traffic-monitoring:8002}
-      PREDICTION_SERVICE_URL: ${PREDICTION_SERVICE_URL:-http://ai-engine:8003}
+      TRAFFIC_SERVICE_URL: http://traffic-monitoring:8002
+      PREDICTION_SERVICE_URL: http://ai-engine:8003
       ROUTE_ANALYSIS_SERVICE_URL: http://route-analysis:8004
-    depends_on: [auth-service]
+      ALERT_SERVICE_URL: http://alert-service:8005
+      ANALYTICS_SERVICE_URL: http://analytics-service:8006
+    depends_on: [auth-service, traffic-monitoring, ai-engine, route-analysis, alert-service, analytics-service]
     ports: ["8000:8000"]
+
   route-analysis:
     build:
       context: .
       dockerfile: services/route-analysis/Dockerfile
     environment:
       OSRM_BASE_URL: ${OSRM_BASE_URL:-https://router.project-osrm.org}
-      TRAFFIC_SERVICE_URL: ${TRAFFIC_SERVICE_URL:-http://traffic-monitoring:8002}
-      PREDICTION_SERVICE_URL: ${PREDICTION_SERVICE_URL:-http://ai-engine:8003}
+      TRAFFIC_SERVICE_URL: http://traffic-monitoring:8002
+      PREDICTION_SERVICE_URL: http://ai-engine:8003
+    depends_on: [traffic-monitoring, ai-engine]
     ports: ["8004:8004"]
+
+  alert-service:
+    build:
+      context: .
+      dockerfile: services/alerts/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://trafficvision:trafficvision@postgres:5432/trafficvision
+      JWT_SECRET: ${JWT_SECRET:-development-only-change-me}
+    depends_on: [postgres]
+    ports: ["8005:8005"]
+
+  analytics-service:
+    build:
+      context: .
+      dockerfile: services/analytics/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://trafficvision:trafficvision@postgres:5432/trafficvision
+    depends_on: [postgres]
+    ports: ["8006:8006"]
 volumes:
   postgres_data:

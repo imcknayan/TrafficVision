@@ -179,7 +179,7 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
 
 
 @app.get("/api/v1/auth/me")
-def me(user: User = Depends(current_user)):
+def me(user: User = Depends(current_user)): 
     return {"user_id": user.id, "name": user.name, "role": user.role}
 
 

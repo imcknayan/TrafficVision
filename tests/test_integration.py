@@ -7,11 +7,16 @@ from fastapi.testclient import TestClient
 ROOT = Path(__file__).resolve().parents[1]
 os.environ["DATABASE_URL"] = f"sqlite:///{ROOT / 'test.db'}"
 os.environ["JWT_SECRET"] = "test-secret"
-sys.path.insert(0, str(ROOT / "services" / "auth"))
-sys.path.insert(0, str(ROOT / "services" / "gateway"))
-sys.path.insert(0, str(ROOT / "services" / "route-analysis"))
+import importlib.util
 
-from app.main import Base, engine, app as auth_app
+spec = importlib.util.spec_from_file_location("auth_main_integ", ROOT / "services" / "auth" / "app" / "main.py")
+auth_mod = importlib.util.module_from_spec(spec)
+sys.modules["auth_main_integ"] = auth_mod
+spec.loader.exec_module(auth_mod)
+
+Base = auth_mod.Base
+engine = auth_mod.engine
+auth_app = auth_mod.app
 
 
 @pytest.fixture(autouse=True)
@@ -105,3 +110,43 @@ def test_gateway_route_registration():
     assert "/api/v1/traffic/{path:path}" in paths
     assert "/api/v1/predict/{path:path}" in paths
     assert "/api/v1/route/{path:path}" in paths
+
+
+def test_traffic_monitoring_integration():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("traffic_main", ROOT / "services" / "traffic-monitoring" / "app" / "main.py")
+    traffic_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(traffic_mod)
+
+    traffic_mod.init_db()
+    with traffic_mod.SessionLocal() as db:
+        traffic_mod.seed_database(db)
+
+    client = TestClient(traffic_mod.app)
+    live = client.get("/api/v1/traffic/live")
+    assert live.status_code == 200
+    assert "data" in live.json()
+
+    density = client.get("/api/v1/traffic/density")
+    assert density.status_code == 200
+    assert "average_density" in density.json()
+
+
+def test_ai_engine_integration():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("ai_main", ROOT / "services" / "ai-engine" / "app" / "main.py")
+    ai_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ai_mod)
+    ai_mod.load_model()
+
+    client = TestClient(ai_mod.app)
+    pred = client.get("/api/v1/predict/congestion?road_id=R001")
+    assert pred.status_code == 200
+    assert "predicted_level" in pred.json()
+    assert pred.json()["model_version"] == "model-v2-rf"
+
+    delay = client.get("/api/v1/predict/delay?road_id=R001")
+    assert delay.status_code == 200
+    assert "estimated_delay_minutes" in delay.json()
+
+

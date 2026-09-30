@@ -1,0 +1,66 @@
+{
+  "model_name": "TrafficVision AI Congestion & Delay Predictor",
+  "model_version": "model-v2-rf",
+  "framework": "scikit-learn RandomForest",
+  "trained_at": "2026-09-29T20:23:04.035961+00:00",
+  "dataset_records": 7403,
+  "features": [
+    "road_id",
+    "hour",
+    "day_of_week",
+    "is_weekend",
+    "vehicle_count",
+    "average_speed",
+    "density"
+  ],
+  "target_congestion_levels": [
+    "High",
+    "Low",
+    "Medium",
+    "Severe"
+  ],
+  "metrics": {
+    "test_accuracy": 0.9993,
+    "mae_delay_minutes": 0.0019,
+    "rmse_delay_minutes": 0.0321
+  },
+  "classification_summary": {
+    "High": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 16.0
+    },
+    "Low": {
+      "precision": 0.9992836676217765,
+      "recall": 1.0,
+      "f1-score": 0.9996417054819061,
+      "support": 1395.0
+    },
+    "Medium": {
+      "precision": 1.0,
+      "recall": 0.9850746268656716,
+      "f1-score": 0.9924812030075187,
+      "support": 67.0
+    },
+    "Severe": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 3.0
+    },
+    "macro avg": {
+      "precision": 0.9998209169054442,
+      "recall": 0.9962686567164178,
+      "f1-score": 0.9980307271223563,
+      "support": 1481.0
+    },
+    "weighted avg": {
+      "precision": 0.9993252642352318,
+      "recall": 0.9993247805536799,
+      "f1-score": 0.9993223630984219,
+      "support": 1481.0
+    }
+  },
+  "notes": "Trained on multi-week historical traffic telemetry across all monitored network corridors."
+}
